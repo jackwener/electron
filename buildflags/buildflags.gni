@@ -20,5 +20,8 @@ declare_args() {
   # be in the format of "key:value".
   # Packagers and vendor builders can set this in gn args to attach extra info
   # about the build in the binary.
-  electron_vendor_version = ""
+  # Kaze: process.versions.kaze names this build's Kaze changes (their version), so
+  # the app knows it runs on its own Electron (a permission check may answer
+  # "prompt", the user agent and window.chrome are Chrome's natively).
+  electron_vendor_version = "kaze:1"
 }
