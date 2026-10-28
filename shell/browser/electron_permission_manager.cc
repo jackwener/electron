@@ -325,10 +325,8 @@ blink::mojom::PermissionStatus ElectronPermissionManager::GetPermissionStatus(
       blink::PermissionDescriptorToPermissionType(permission_descriptor);
   base::DictValue details;
   details.Set("embeddingOrigin", embedding_origin.spec());
-  bool granted = CheckPermissionWithDetails(permission, {}, requesting_origin,
-                                            std::move(details));
-  return granted ? blink::mojom::PermissionStatus::GRANTED
-                 : blink::mojom::PermissionStatus::DENIED;
+  return CheckPermissionStatusWithDetails(permission, {}, requesting_origin,
+                                          std::move(details));
 }
 
 content::PermissionResult
@@ -354,20 +352,21 @@ void ElectronPermissionManager::CheckBluetoothDevicePair(
   }
 }
 
-bool ElectronPermissionManager::CheckPermissionWithDetails(
+blink::mojom::PermissionStatus
+ElectronPermissionManager::CheckPermissionStatusWithDetails(
     blink::PermissionType permission,
     content::RenderFrameHost* render_frame_host,
     const GURL& requesting_origin,
     base::DictValue details) const {
   if (permission == blink::PermissionType::GEOLOCATION &&
       IsGeolocationDisabledViaCommandLine())
-    return false;
+    return blink::mojom::PermissionStatus::DENIED;
 
   if (check_handler_.is_null()) {
     if (permission == blink::PermissionType::DEPRECATED_SYNC_CLIPBOARD_READ) {
-      return false;
+      return blink::mojom::PermissionStatus::DENIED;
     } else {
-      return true;
+      return blink::mojom::PermissionStatus::GRANTED;
     }
   }
 
@@ -393,6 +392,17 @@ bool ElectronPermissionManager::CheckPermissionWithDetails(
   }
   return check_handler_.Run(web_contents, permission, requesting_origin,
                             base::Value(std::move(details)));
+}
+
+bool ElectronPermissionManager::CheckPermissionWithDetails(
+    blink::PermissionType permission,
+    content::RenderFrameHost* render_frame_host,
+    const GURL& requesting_origin,
+    base::DictValue details) const {
+  return CheckPermissionStatusWithDetails(permission, render_frame_host,
+                                          requesting_origin,
+                                          std::move(details)) ==
+         blink::mojom::PermissionStatus::GRANTED;
 }
 
 bool ElectronPermissionManager::CheckDevicePermission(
@@ -463,13 +473,9 @@ ElectronPermissionManager::GetPermissionResultForCurrentDocument(
               content::PermissionUtil::GetLastCommittedOriginAsURL(
                   render_frame_host->GetMainFrame())
                   .spec());
-  bool granted = CheckPermissionWithDetails(
+  return content::PermissionResult(CheckPermissionStatusWithDetails(
       permission, render_frame_host,
-      render_frame_host->GetLastCommittedOrigin().GetURL(), std::move(details));
-  return granted ? content::PermissionResult(
-                       blink::mojom::PermissionStatus::GRANTED)
-                 : content::PermissionResult(
-                       blink::mojom::PermissionStatus::DENIED);
+      render_frame_host->GetLastCommittedOrigin().GetURL(), std::move(details)));
 }
 
 content::PermissionResult

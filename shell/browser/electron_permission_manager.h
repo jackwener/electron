@@ -51,11 +51,13 @@ class ElectronPermissionManager : public content::PermissionControllerDelegate {
                                                       blink::PermissionType,
                                                       StatusCallback,
                                                       const base::Value&)>;
-  using CheckHandler =
-      base::RepeatingCallback<bool(content::WebContents*,
-                                   blink::PermissionType,
-                                   const GURL& requesting_origin,
-                                   const base::Value&)>;
+  // Kaze: a check answers granted, denied or not yet decided (ASK, which pages
+  // read as "prompt", as in Chrome) — from JS, true, false or "prompt".
+  using CheckHandler = base::RepeatingCallback<blink::mojom::PermissionStatus(
+      content::WebContents*,
+      blink::PermissionType,
+      const GURL& requesting_origin,
+      const base::Value&)>;
 
   using DeviceCheckHandler =
       base::RepeatingCallback<bool(const v8::Local<v8::Object>&)>;
@@ -91,6 +93,12 @@ class ElectronPermissionManager : public content::PermissionControllerDelegate {
   void CheckBluetoothDevicePair(gin_helper::Dictionary details,
                                 PairCallback pair_callback) const;
 
+  // What a check answers: granted, denied, or not yet decided (ASK).
+  blink::mojom::PermissionStatus CheckPermissionStatusWithDetails(
+      blink::PermissionType permission,
+      content::RenderFrameHost* render_frame_host,
+      const GURL& requesting_origin,
+      base::DictValue details) const;
   bool CheckPermissionWithDetails(blink::PermissionType permission,
                                   content::RenderFrameHost* render_frame_host,
                                   const GURL& requesting_origin,

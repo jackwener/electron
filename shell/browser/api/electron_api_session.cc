@@ -4,6 +4,8 @@
 
 #include "shell/browser/api/electron_api_session.h"
 
+#include "third_party/blink/public/mojom/permissions/permission_status.mojom-shared.h"
+
 #include <algorithm>
 #include <memory>
 #include <set>
@@ -389,6 +391,36 @@ base::DictValue createProxyConfig(ProxyPrefs::ProxyMode proxy_mode,
 }
 
 }  // namespace
+
+namespace gin {
+
+// Kaze: a permission check handler's answer — true (granted), false (denied)
+// or "prompt" (not yet decided: ASK, which pages read as "prompt", as in Chrome
+// for a site the user hasn't answered).
+template <>
+struct Converter<blink::mojom::PermissionStatus> {
+  static bool FromV8(v8::Isolate* isolate,
+                     v8::Local<v8::Value> val,
+                     blink::mojom::PermissionStatus* out) {
+    if (val->IsString()) {
+      std::string value;
+      if (!ConvertFromV8(isolate, val, &value))
+        return false;
+      if (value == "prompt" || value == "ask" || value == "default") {
+        *out = blink::mojom::PermissionStatus::ASK;
+        return true;
+      }
+      *out = value == "granted" ? blink::mojom::PermissionStatus::GRANTED
+                                : blink::mojom::PermissionStatus::DENIED;
+      return true;
+    }
+    *out = val->BooleanValue(isolate) ? blink::mojom::PermissionStatus::GRANTED
+                                      : blink::mojom::PermissionStatus::DENIED;
+    return true;
+  }
+};
+
+}  // namespace gin
 
 namespace gin {
 
