@@ -129,6 +129,8 @@ filenames = {
   ]
 
   lib_sources_mac = [
+    "shell/browser/kaze_share_service.h",
+    "shell/browser/kaze_share_service_mac.mm",
     "shell/app/electron_main_delegate_mac.h",
     "shell/app/electron_main_delegate_mac.mm",
     "shell/app/electron_prefetch_mac.h",
