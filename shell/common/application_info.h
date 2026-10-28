@@ -25,6 +25,13 @@ std::string GetApplicationVersion();
 // Returns the user agent of Electron.
 std::string GetApplicationUserAgent();
 
+// Kaze: the languages pages are told, as Chrome's default (its
+// IDS_ACCEPT_LANGUAGES): the app's locale, then its base language ("en-US,en",
+// "zh-CN,zh") — one list for navigator.languages and Accept-Language, so the
+// two agree. (Electron appended the OS's own list as it spells it, "en-CN",
+// "zh-Hans-CN", which no Chrome sends, to navigator.languages alone.)
+std::string GetAcceptLanguages(const std::string& locale);
+
 // Drops the cached user agent so that the next caller rebuilds it. Call this
 // whenever something the user agent is built from changes.
 void InvalidateApplicationUserAgent();
