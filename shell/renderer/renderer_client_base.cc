@@ -263,6 +263,12 @@ void RendererClientBase::RenderThreadStarted() {
   blink::WebRuntimeFeatures::EnableFeatureFromString("MessagePortCloseEvent",
                                                      true);
 
+#if BUILDFLAG(IS_MAC)
+  // Kaze: navigator.share() and canShare(), as Chrome enables them on the Mac
+  // (its renderer client; the browser side is KazeShareService).
+  blink::WebRuntimeFeatures::EnableWebShare(true);
+#endif
+
 #if BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
   extensions_client_ = std::make_unique<ElectronExtensionsClient>();
   extensions::ExtensionsClient::Set(extensions_client_.get());
