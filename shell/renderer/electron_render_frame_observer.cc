@@ -16,6 +16,7 @@
 #include "shell/common/options_switches.h"
 #include "shell/common/web_contents_utility.mojom.h"
 #include "shell/common/world_ids.h"
+#include "shell/renderer/kaze_chrome_object.h"
 #include "shell/renderer/renderer_client_base.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "third_party/blink/public/common/web_preferences/web_preferences.h"
@@ -86,6 +87,11 @@ void ElectronRenderFrameObserver::DidClearWindowObject() {
 void ElectronRenderFrameObserver::DidInstallConditionalFeatures(
     v8::Local<v8::Context> context,
     int world_id) {
+  // Kaze: the page's own world gets Chrome's window.chrome, natively
+  // (kaze_chrome_object.h), every document, as Chrome's renderer installs it.
+  if (world_id == WorldIDs::MAIN_WORLD_ID)
+    InstallKazeChromeObject(context);
+
   // When a child window is created with window.open, its WebPreferences will
   // be copied from its parent, and Chromium will initialize JS context in it
   // immediately.
