@@ -66,6 +66,11 @@ uint64_t& UserAgentGeneration() {
 
 }  // namespace
 
+std::string GetAcceptLanguages(const std::string& locale) {
+  const std::string base = locale.substr(0, locale.find('-'));
+  return base.empty() || base == locale ? locale : locale + "," + base;
+}
+
 std::string GetApplicationUserAgent() {
   // Built once; invalidated when the name or version it is built from changes.
   uint64_t generation;
