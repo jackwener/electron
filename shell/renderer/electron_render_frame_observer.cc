@@ -15,6 +15,7 @@
 #include "services/service_manager/public/cpp/interface_provider.h"
 #include "shell/common/web_contents_utility.mojom.h"
 #include "shell/common/world_ids.h"
+#include "shell/renderer/kaze_chrome_object.h"
 #include "shell/renderer/renderer_client_base.h"
 #include "shell/renderer/window_setup.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
@@ -96,6 +97,11 @@ void ElectronRenderFrameObserver::DidClearWindowObject() {
 void ElectronRenderFrameObserver::DidInstallConditionalFeatures(
     v8::Local<v8::Context> context,
     int world_id) {
+  // Kaze: the page's own world gets Chrome's window.chrome, natively
+  // (kaze_chrome_object.h), every document, as Chrome's renderer installs it.
+  if (world_id == WorldIDs::MAIN_WORLD_ID)
+    InstallKazeChromeObject(context);
+
   if (electron::is_main_world(world_id)) {
     // Start each document with a clean slate before preload has a chance to
     // subscribe for current-document isolated world creation.
