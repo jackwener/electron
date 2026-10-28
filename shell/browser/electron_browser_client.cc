@@ -93,6 +93,9 @@
 #include "shell/browser/electron_api_sw_ipc_handler_impl.h"
 #include "shell/browser/electron_autofill_driver_factory.h"
 #include "shell/browser/electron_browser_context.h"
+#if BUILDFLAG(IS_MAC)
+#include "shell/browser/kaze_share_service.h"
+#endif
 #include "shell/browser/electron_browser_main_parts.h"
 #include "shell/browser/electron_child_process_host_flags.h"
 #include "shell/browser/electron_navigation_throttle.h"
@@ -1950,6 +1953,11 @@ void ElectronBrowserClient::RegisterBrowserInterfaceBindersForFrame(
       base::BindRepeating(&badging::BadgeManager::BindFrameReceiver));
   map->Add<blink::mojom::KeyboardLockService>(base::BindRepeating(
       &content::KeyboardLockServiceImpl::CreateMojoService));
+#if BUILDFLAG(IS_MAC)
+  // Kaze: navigator.share(), the system's share menu (kaze_share_service.h).
+  map->Add<blink::mojom::ShareService>(
+      base::BindRepeating(&KazeShareService::Create));
+#endif
   map->Add<media::mojom::OnDeviceSpeechRecognition>(
       &OnDeviceSpeechRecognitionStub::Bind);
 #if BUILDFLAG(ENABLE_BUILTIN_SPELLCHECKER)
