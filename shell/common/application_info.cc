@@ -36,20 +36,15 @@ std::string GetPossiblyOverriddenApplicationName() {
 
 namespace {
 
+// Kaze: the user agent is Chrome's own (embedder_support::GetUserAgent: the reduced
+// "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ... Chrome/<major>.0.0.0 Safari/537.36"),
+// with no Electron or app token. A browser that names Electron or itself there is an embedded
+// browser to sign-in pages and risk checks; and an app that rewrites the string itself
+// (setUserAgent) loses Chromium's client hints and its userAgentData agreeing with it. Left
+// as Chromium makes it, the string, the Sec-CH-UA hints and navigator.userAgentData all come
+// from one place and agree, as in Chrome.
 std::string BuildApplicationUserAgent() {
-  Browser* browser = Browser::Get();
-  std::string name, user_agent;
-  if (!base::RemoveChars(browser->GetName(), " ", &name))
-    name = browser->GetName();
-  if (name == ELECTRON_PRODUCT_NAME) {
-    user_agent = "Chrome/" CHROME_VERSION_STRING " " ELECTRON_PRODUCT_NAME
-                 "/" ELECTRON_VERSION_STRING;
-  } else {
-    user_agent = absl::StrFormat(
-        "%s/%s Chrome/%s " ELECTRON_PRODUCT_NAME "/" ELECTRON_VERSION_STRING,
-        name, browser->GetVersion(), CHROME_VERSION_STRING);
-  }
-  return embedder_support::BuildUserAgentFromProduct(user_agent);
+  return embedder_support::GetUserAgent();
 }
 
 base::Lock& UserAgentLock() {
