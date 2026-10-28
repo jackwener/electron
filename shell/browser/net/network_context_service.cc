@@ -2,6 +2,7 @@
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
+#include "shell/common/application_info.h"
 #include "shell/browser/net/network_context_service.h"
 
 #include <utility>
@@ -69,8 +70,8 @@ void NetworkContextService::ConfigureNetworkContextParams(
           .CreateCorsOriginAccessPatternsList();
 
   network_context_params->accept_language =
-      net::HttpUtil::GenerateAcceptLanguageHeader(
-          ElectronBrowserClient::Get()->GetApplicationLocale());
+      net::HttpUtil::GenerateAcceptLanguageHeader(GetAcceptLanguages(
+          ElectronBrowserClient::Get()->GetApplicationLocale()));
 
   // Enable the HTTP cache.
   network_context_params->http_cache_enabled =

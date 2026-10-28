@@ -2,6 +2,7 @@
 // Use of this source code is governed by the MIT license that can be
 // found in the LICENSE file.
 
+#include "shell/common/application_info.h"
 #include "shell/browser/api/electron_api_web_contents.h"
 
 #include <algorithm>
@@ -1094,15 +1095,10 @@ void WebContents::InitWithSessionAndOptions(
   // Note that an application locale set to the browser process might be
   // different with the one set to the preference list.
   // (e.g. overridden with --lang)
-  std::string accept_languages =
-      g_browser_process->GetApplicationLocale() + ",";
-  for (auto const& language : electron::GetPreferredLanguages()) {
-    if (language == g_browser_process->GetApplicationLocale())
-      continue;
-    accept_languages += language + ",";
-  }
-  accept_languages.pop_back();
-  prefs->accept_languages = accept_languages;
+  // Kaze: Chrome's default list for the app's locale (GetAcceptLanguages), the
+  // same the network sends as Accept-Language.
+  prefs->accept_languages =
+      GetAcceptLanguages(g_browser_process->GetApplicationLocale());
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
   // Update font settings.
