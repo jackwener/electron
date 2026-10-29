@@ -3748,7 +3748,9 @@ void WebContents::SetUserAgent(const std::string& user_agent) {
   blink::UserAgentOverride ua_override;
   ua_override.ua_string_override = user_agent;
   if (!user_agent.empty())
-    ua_override.ua_metadata_override = embedder_support::GetUserAgentMetadata();
+    // Kaze: Chrome's brands, as the browser client gives them.
+    ua_override.ua_metadata_override =
+        ElectronBrowserClient::Get()->GetUserAgentMetadata();
 
   web_contents()->SetUserAgentOverride(ua_override, false);
 }

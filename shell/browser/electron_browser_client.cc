@@ -32,6 +32,7 @@
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/chrome_version.h"
 #include "components/embedder_support/user_agent_utils.h"
+#include "components/version_info/version_info.h"
 #include "components/net_log/chrome_net_log.h"
 #include "components/network_hints/common/network_hints.mojom.h"
 #include "content/browser/keyboard_lock/keyboard_lock_service_impl.h"  // nogncheck
@@ -1369,8 +1370,26 @@ void ElectronBrowserClient::SetUserAgent(const std::string& user_agent) {
   user_agent_override_ = user_agent;
 }
 
+// Kaze: the brands Chrome lists — a GREASE brand, Chromium and Google Chrome,
+// in Chromium's seeded order. Chromium-branded builds name no product
+// (embedder_support adds the product only for a branded build); Chrome's is
+// added as the one extra brand, which takes the place the product would
+// (GenerateBrandVersionList), so the order is Chrome's for the version.
 blink::UserAgentMetadata ElectronBrowserClient::GetUserAgentMetadata() {
-  return embedder_support::GetUserAgentMetadata();
+  blink::UserAgentMetadata metadata = embedder_support::GetUserAgentMetadata();
+  metadata.brand_version_list =
+      embedder_support::GetUserAgentBrandMajorVersionList(
+          blink::UserAgentBrandVersion{
+              "Google Chrome",
+              std::string(version_info::GetMajorVersionNumber())});
+  if (!metadata.brand_full_version_list.empty()) {
+    metadata.brand_full_version_list =
+        embedder_support::GetUserAgentBrandFullVersionList(
+            blink::UserAgentBrandVersion{
+                "Google Chrome",
+                std::string(version_info::GetVersionNumber())});
+  }
+  return metadata;
 }
 
 mojo::PendingRemote<network::mojom::URLLoaderFactory>
