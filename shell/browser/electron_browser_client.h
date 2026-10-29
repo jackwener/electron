@@ -154,6 +154,8 @@ class ElectronBrowserClient : public content::ContentBrowserClient,
 
 #if BUILDFLAG(IS_MAC)
   base::FilePath GetChildProcessPath(int child_flags) override;
+  std::unique_ptr<content::WebContentsViewDelegate> GetWebContentsViewDelegate(
+      content::WebContents* web_contents) override;
   device::GeolocationSystemPermissionManager*
   GetGeolocationSystemPermissionManager() override;
 #endif

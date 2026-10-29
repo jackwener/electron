@@ -701,6 +701,7 @@ source_set("electron_lib") {
       "//mojo/core/embedder",
       "//mojo/public/cpp/platform",
       "//ui/accelerated_widget_mac",
+      "//ui/events/blink",
     ]
 
     if (!is_mas_build) {

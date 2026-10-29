@@ -95,7 +95,9 @@
 #include "shell/browser/electron_autofill_driver_factory.h"
 #include "shell/browser/electron_browser_context.h"
 #if BUILDFLAG(IS_MAC)
+#include "content/public/browser/web_contents_view_delegate.h"
 #include "shell/browser/kaze_share_service.h"
+#include "shell/browser/ui/cocoa/kaze_web_contents_view_delegate_mac.h"
 #endif
 #include "shell/browser/electron_browser_main_parts.h"
 #include "shell/browser/electron_child_process_host_flags.h"
@@ -2350,6 +2352,14 @@ void ElectronBrowserClient::RegisterBrowserInterfaceBindersForServiceWorker(
 }
 
 #if BUILDFLAG(IS_MAC)
+// Kaze: two-finger swipes go back and forward, as in Chrome
+// (kaze_web_contents_view_delegate_mac.h).
+std::unique_ptr<content::WebContentsViewDelegate>
+ElectronBrowserClient::GetWebContentsViewDelegate(
+    content::WebContents* web_contents) {
+  return CreateKazeWebContentsViewDelegate();
+}
+
 base::FilePath ElectronBrowserClient::GetChildProcessPath(int child_flags) {
   if (child_flags !=
       static_cast<int>(
