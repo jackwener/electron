@@ -517,7 +517,10 @@ void ElectronBrowserClient::OverrideWebPreferences(
   prefs->plugins_enabled = true;
   prefs->dom_paste_enabled = false;
   prefs->javascript_can_access_clipboard = false;
-  prefs->allow_scripts_to_close_windows = true;
+  // kaze: Chrome's rule — a script may close only a window it opened (or one
+  // whose history has a single entry); a tab you opened yourself it can't, so
+  // a site that spots something it dislikes can't close the page on you.
+  prefs->allow_scripts_to_close_windows = false;
   prefs->local_storage_enabled = true;
   prefs->allow_universal_access_from_file_urls =
       electron::fuses::IsGrantFileProtocolExtraPrivilegesEnabled();
