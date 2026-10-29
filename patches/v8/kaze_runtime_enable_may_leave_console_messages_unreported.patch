@@ -1,0 +1,336 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: jackwener <30525741+jackwener@users.noreply.github.com>
+Date: Thu, 29 Oct 2026 06:29:10 -0400
+Subject: kaze: Runtime.enable may leave console messages unreported
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+A page can tell that a debugger is attached: once Runtime.enable is on, V8
+serializes every console.log argument for the client, which runs the getters
+of the logged objects (an Error's stack, say) — the classic CDP detection.
+Kaze's agent drives pages over CDP, so sites that look for it (BOSS直聘)
+closed themselves the moment it began.
+
+Ported from OpenBrowser's 004-session-console-reporting: Runtime.enable takes
+two experimental options, reportConsoleMessages and serializeConsoleObjects
+(both true by default, so DevTools is unchanged). An automation client that
+passes false gets execution contexts and evaluation as before, but console
+messages and exceptions are not serialized: no getter of the page's runs.
+---
+ include/js_protocol.pdl                | 10 +++++
+ src/inspector/v8-console-message.cc    | 55 ++++++++++++++++++--------
+ src/inspector/v8-console-message.h     |  9 +++--
+ src/inspector/v8-runtime-agent-impl.cc | 44 ++++++++++++++++++---
+ src/inspector/v8-runtime-agent-impl.h  |  7 +++-
+ 5 files changed, 99 insertions(+), 26 deletions(-)
+
+diff --git a/include/js_protocol.pdl b/include/js_protocol.pdl
+index ad0d42b..cf4a108 100644
+--- a/include/js_protocol.pdl
++++ b/include/js_protocol.pdl
+@@ -1515,6 +1515,16 @@ domain Runtime
+   # When the reporting gets enabled the event will be sent immediately for each existing execution
+   # context.
+   command enable
++    parameters
++      # OpenBrowser extension: defaults to true for normal DevTools clients.
++      # False skips cached and live console argument serialization for this session.
++      # Execution contexts, evaluation and explicit bindings remain available.
++      experimental optional boolean reportConsoleMessages
++      # OpenBrowser extension: defaults to true for normal DevTools clients.
++      # False reports console/exception objects by type only, without inspecting
++      # properties, descriptions, previews, or exception metadata. Primitives,
++      # existing exception text, and stack locations remain available.
++      experimental optional boolean serializeConsoleObjects
+ 
+   # Evaluates expression on global object.
+   command evaluate
+diff --git a/src/inspector/v8-console-message.cc b/src/inspector/v8-console-message.cc
+index da35ae7..52ae5ba 100644
+--- a/src/inspector/v8-console-message.cc
++++ b/src/inspector/v8-console-message.cc
+@@ -192,6 +192,22 @@ class V8ValueStringBuilder {
+   v8::Local<v8::Context> m_context;
+ };
+ 
++// Type checks do not call page getters, proxy traps, or Error stack formatters.
++// Do not create remote handles: automatic diagnostics must not retain an object
++// for subsequent implicit inspection by a frontend.
++std::unique_ptr<protocol::Runtime::RemoteObject> wrapConsoleValue(
++    V8InspectorSessionImpl* session, v8::Local<v8::Context> context,
++    v8::Local<v8::Value> value, bool generatePreview, bool serializeObjects) {
++  if (!serializeObjects && value->IsObject()) {
++    return protocol::Runtime::RemoteObject::create()
++        .setType(value->IsFunction()
++                     ? protocol::Runtime::RemoteObject::TypeEnum::Function
++                     : protocol::Runtime::RemoteObject::TypeEnum::Object)
++        .build();
++  }
++  return session->wrapObject(context, value, "console", generatePreview);
++}
++
+ }  // namespace
+ 
+ V8ConsoleMessage::V8ConsoleMessage(V8MessageOrigin origin, double timestamp,
+@@ -257,7 +273,8 @@ void V8ConsoleMessage::reportToFrontend(
+ 
+ std::unique_ptr<protocol::Array<protocol::Runtime::RemoteObject>>
+ V8ConsoleMessage::wrapArguments(V8InspectorSessionImpl* session,
+-                                bool generatePreview) const {
++                                bool generatePreview,
++                                bool serializeObjects) const {
+   V8InspectorImpl* inspector = session->inspector();
+   int contextGroupId = session->contextGroupId();
+   int contextId = m_contextId;
+@@ -274,8 +291,8 @@ V8ConsoleMessage::wrapArguments(V8InspectorSessionImpl* session,
+       std::make_unique<protocol::Array<protocol::Runtime::RemoteObject>>();
+ 
+   v8::Local<v8::Value> value = m_arguments[0]->Get(isolate);
+-  if (value->IsObject() && m_type == ConsoleAPIType::kTable &&
+-      generatePreview) {
++  if (serializeObjects && value->IsObject() &&
++      m_type == ConsoleAPIType::kTable && generatePreview) {
+     v8::MaybeLocal<v8::Array> columns;
+     if (m_arguments.size() > 1) {
+       v8::Local<v8::Value> secondArgument = m_arguments[1]->Get(isolate);
+@@ -301,8 +318,8 @@ V8ConsoleMessage::wrapArguments(V8InspectorSessionImpl* session,
+   } else {
+     for (size_t i = 0; i < m_arguments.size(); ++i) {
+       std::unique_ptr<protocol::Runtime::RemoteObject> wrapped =
+-          session->wrapObject(context, m_arguments[i]->Get(isolate), "console",
+-                              generatePreview);
++          wrapConsoleValue(session, context, m_arguments[i]->Get(isolate),
++                           generatePreview, serializeObjects);
+       inspectedContext = inspector->getContext(contextGroupId, contextId);
+       if (!inspectedContext) return nullptr;
+       if (!wrapped) {
+@@ -317,7 +334,8 @@ V8ConsoleMessage::wrapArguments(V8InspectorSessionImpl* session,
+ 
+ void V8ConsoleMessage::reportToFrontend(protocol::Runtime::Frontend* frontend,
+                                         V8InspectorSessionImpl* session,
+-                                        bool generatePreview) const {
++                                        bool generatePreview,
++                                        bool serializeObjects) const {
+   int contextGroupId = session->contextGroupId();
+   V8InspectorImpl* inspector = session->inspector();
+   // Protect against reentrant debugger calls via interrupts.
+@@ -336,12 +354,14 @@ void V8ConsoleMessage::reportToFrontend(protocol::Runtime::Frontend* frontend,
+         maybeScriptOrigin ? maybeScriptOrigin->Options().IsSharedCrossOrigin()
+                           : false;
+     std::unique_ptr<protocol::Runtime::RemoteObject> exception =
+-        isSharedCrossOrigin ? wrapException(session, generatePreview) : nullptr;
++        isSharedCrossOrigin
++            ? wrapException(session, generatePreview, serializeObjects)
++            : nullptr;
+     const bool includeException = isSharedCrossOrigin && exception;
+     std::unique_ptr<protocol::Runtime::ExceptionDetails> exceptionDetails =
+         protocol::Runtime::ExceptionDetails::create()
+             .setExceptionId(m_exceptionId)
+-            .setText(includeException
++            .setText(includeException && serializeObjects
+                          ? m_message
+                          : (m_detailedMessage.length() ? m_detailedMessage
+                                                        : m_message))
+@@ -360,9 +380,11 @@ void V8ConsoleMessage::reportToFrontend(protocol::Runtime::Frontend* frontend,
+     if (includeException) {
+       exceptionDetails->setException(std::move(exception));
+     }
+-    std::unique_ptr<protocol::DictionaryValue> data =
+-        getAssociatedExceptionData(inspector, session);
+-    if (data) exceptionDetails->setExceptionMetaData(std::move(data));
++    if (serializeObjects) {
++      std::unique_ptr<protocol::DictionaryValue> data =
++          getAssociatedExceptionData(inspector, session);
++      if (data) exceptionDetails->setExceptionMetaData(std::move(data));
++    }
+     frontend->exceptionThrown(m_timestamp, std::move(exceptionDetails));
+     return;
+   }
+@@ -372,7 +394,7 @@ void V8ConsoleMessage::reportToFrontend(protocol::Runtime::Frontend* frontend,
+   }
+   if (m_origin == V8MessageOrigin::kConsole) {
+     std::unique_ptr<protocol::Array<protocol::Runtime::RemoteObject>>
+-        arguments = wrapArguments(session, generatePreview);
++        arguments = wrapArguments(session, generatePreview, serializeObjects);
+     V8ConsoleMessageStorage* inspectorStorage =
+         inspector->consoleMessageStorage(contextGroupId);
+     if (!inspectorStorage || inspectorStorage->id() != storageId) {
+@@ -433,7 +455,8 @@ V8ConsoleMessage::getAssociatedExceptionData(
+ 
+ std::unique_ptr<protocol::Runtime::RemoteObject>
+ V8ConsoleMessage::wrapException(V8InspectorSessionImpl* session,
+-                                bool generatePreview) const {
++                                bool generatePreview,
++                                bool serializeObjects) const {
+   if (m_arguments.empty() || !m_contextId) return nullptr;
+   DCHECK_EQ(1u, m_arguments.size());
+   std::shared_ptr<InspectedContext> inspectedContext =
+@@ -443,9 +466,9 @@ V8ConsoleMessage::wrapException(V8InspectorSessionImpl* session,
+   v8::Isolate* isolate = inspectedContext->isolate();
+   v8::HandleScope handles(isolate);
+   // TODO(dgozman): should we use different object group?
+-  return session->wrapObject(inspectedContext->context(),
+-                             m_arguments[0]->Get(isolate), "console",
+-                             generatePreview);
++  return wrapConsoleValue(session, inspectedContext->context(),
++                          m_arguments[0]->Get(isolate), generatePreview,
++                          serializeObjects);
+ }
+ 
+ V8MessageOrigin V8ConsoleMessage::origin() const { return m_origin; }
+diff --git a/src/inspector/v8-console-message.h b/src/inspector/v8-console-message.h
+index b3c40d8..95817f9 100644
+--- a/src/inspector/v8-console-message.h
++++ b/src/inspector/v8-console-message.h
+@@ -69,7 +69,8 @@ class V8ConsoleMessage {
+   V8MessageOrigin origin() const;
+   void reportToFrontend(protocol::Console::Frontend*) const;
+   void reportToFrontend(protocol::Runtime::Frontend*, V8InspectorSessionImpl*,
+-                        bool generatePreview) const;
++                        bool generatePreview,
++                        bool serializeObjects = true) const;
+   ConsoleAPIType type() const;
+   void contextDestroyed(int contextId);
+ 
+@@ -82,9 +83,11 @@ class V8ConsoleMessage {
+ 
+   using Arguments = std::vector<std::shared_ptr<v8::Global<v8::Value>>>;
+   std::unique_ptr<protocol::Array<protocol::Runtime::RemoteObject>>
+-  wrapArguments(V8InspectorSessionImpl*, bool generatePreview) const;
++  wrapArguments(V8InspectorSessionImpl*, bool generatePreview,
++                bool serializeObjects) const;
+   std::unique_ptr<protocol::Runtime::RemoteObject> wrapException(
+-      V8InspectorSessionImpl*, bool generatePreview) const;
++      V8InspectorSessionImpl*, bool generatePreview,
++      bool serializeObjects) const;
+   void setLocation(const String16& url, unsigned lineNumber,
+                    unsigned columnNumber, std::unique_ptr<V8StackTraceImpl>,
+                    int scriptId);
+diff --git a/src/inspector/v8-runtime-agent-impl.cc b/src/inspector/v8-runtime-agent-impl.cc
+index 0120bbd..44a7ac3 100644
+--- a/src/inspector/v8-runtime-agent-impl.cc
++++ b/src/inspector/v8-runtime-agent-impl.cc
+@@ -63,6 +63,8 @@ static const char customObjectFormatterEnabled[] =
+     "customObjectFormatterEnabled";
+ static const char maxCallStackSizeToCapture[] = "maxCallStackSizeToCapture";
+ static const char runtimeEnabled[] = "runtimeEnabled";
++static const char reportConsoleMessages[] = "reportConsoleMessages";
++static const char serializeConsoleObjects[] = "serializeConsoleObjects";
+ static const char contextBindings[] = "contextBindings";
+ static const char globalBindings[] = "globalBindings";
+ }  // namespace V8RuntimeAgentImplState
+@@ -1108,7 +1110,10 @@ void V8RuntimeAgentImpl::restore() {
+     return;
+   }
+   m_frontend.executionContextsCleared();
+-  enable();
++  enable(m_state->booleanProperty(
++             V8RuntimeAgentImplState::reportConsoleMessages, true),
++      m_state->booleanProperty(
++          V8RuntimeAgentImplState::serializeConsoleObjects, true));
+   if (m_state->booleanProperty(
+           V8RuntimeAgentImplState::customObjectFormatterEnabled, false)) {
+     m_session->setCustomObjectFormatterEnabled(true);
+@@ -1125,8 +1130,24 @@ void V8RuntimeAgentImpl::restore() {
+       [this](InspectedContext* context) { addBindings(context); });
+ }
+ 
+-Response V8RuntimeAgentImpl::enable() {
+-  if (m_enabled) return Response::Success();
++Response V8RuntimeAgentImpl::enable(
++    std::optional<bool> reportConsoleMessages,
++    std::optional<bool> serializeConsoleObjects) {
++  if (serializeConsoleObjects.has_value()) {
++    m_serializeConsoleObjects = *serializeConsoleObjects;
++    m_state->setBoolean(V8RuntimeAgentImplState::serializeConsoleObjects,
++                        m_serializeConsoleObjects);
++  }
++  const bool wasReporting = m_reportConsoleMessages;
++  if (reportConsoleMessages.has_value()) {
++    m_reportConsoleMessages = *reportConsoleMessages;
++    m_state->setBoolean(V8RuntimeAgentImplState::reportConsoleMessages,
++                        m_reportConsoleMessages);
++  }
++  if (m_enabled) {
++    if (!wasReporting && m_reportConsoleMessages) reportCachedMessages();
++    return Response::Success();
++  }
+   TRACE_EVENT(TRACE_DISABLED_BY_DEFAULT("v8.inspector"),
+               "V8RuntimeAgentImpl::enable",
+               perfetto::Flow::ProcessScoped(reinterpret_cast<uintptr_t>(this)));
+@@ -1137,6 +1158,12 @@ Response V8RuntimeAgentImpl::enable() {
+   m_inspector->debugger()->setMaxCallStackSizeToCapture(
+       this, V8StackTraceImpl::kDefaultMaxCallStackSizeToCapture);
+   m_session->reportAllContexts(this);
++  reportCachedMessages();
++  return Response::Success();
++}
++
++void V8RuntimeAgentImpl::reportCachedMessages() {
++  if (!m_reportConsoleMessages) return;
+   V8ConsoleMessageStorage* storage =
+       m_inspector->ensureConsoleMessageStorage(m_session->contextGroupId());
+   // The message queue can be cleared by a getter during message formatting.
+@@ -1157,7 +1184,6 @@ Response V8RuntimeAgentImpl::enable() {
+       break;
+     }
+   }
+-  return Response::Success();
+ }
+ 
+ Response V8RuntimeAgentImpl::disable() {
+@@ -1167,6 +1193,10 @@ Response V8RuntimeAgentImpl::disable() {
+               perfetto::TerminatingFlow::ProcessScoped(
+                   reinterpret_cast<uintptr_t>(this)));
+   m_enabled = false;
++  m_reportConsoleMessages = true;
++  m_serializeConsoleObjects = true;
++  m_state->remove(V8RuntimeAgentImplState::reportConsoleMessages);
++  m_state->remove(V8RuntimeAgentImplState::serializeConsoleObjects);
+   m_state->setBoolean(V8RuntimeAgentImplState::runtimeEnabled, false);
+   m_state->remove(V8RuntimeAgentImplState::contextBindings);
+   m_state->remove(V8RuntimeAgentImplState::globalBindings);
+@@ -1234,12 +1264,14 @@ void V8RuntimeAgentImpl::inspect(
+ }
+ 
+ void V8RuntimeAgentImpl::messageAdded(V8ConsoleMessage* message) {
+-  if (m_enabled) reportMessage(message, true);
++  if (m_enabled && m_reportConsoleMessages)
++    reportMessage(message, true);
+ }
+ 
+ bool V8RuntimeAgentImpl::reportMessage(V8ConsoleMessage* message,
+                                        bool generatePreview) {
+-  message->reportToFrontend(&m_frontend, m_session, generatePreview);
++  message->reportToFrontend(&m_frontend, m_session, generatePreview,
++                            m_serializeConsoleObjects);
+   m_frontend.flush();
+   return m_inspector->hasConsoleMessageStorage(m_session->contextGroupId());
+ }
+diff --git a/src/inspector/v8-runtime-agent-impl.h b/src/inspector/v8-runtime-agent-impl.h
+index b0efbe6..c19ec41 100644
+--- a/src/inspector/v8-runtime-agent-impl.h
++++ b/src/inspector/v8-runtime-agent-impl.h
+@@ -66,7 +66,9 @@ class V8RuntimeAgentImpl : public protocol::Runtime::Backend {
+   void restore();
+ 
+   // Part of the protocol.
+-  Response enable() override;
++  Response enable(
++      std::optional<bool> reportConsoleMessages = std::nullopt,
++      std::optional<bool> serializeConsoleObjects = std::nullopt) override;
+   Response disable() override;
+   void evaluate(
+       const String16& expression, std::optional<String16> objectGroup,
+@@ -175,7 +177,10 @@ class V8RuntimeAgentImpl : public protocol::Runtime::Backend {
+   protocol::Runtime::Frontend m_frontend;
+   V8InspectorImpl* m_inspector;
+   std::shared_ptr<V8DebuggerBarrier> m_debuggerBarrier;
++  void reportCachedMessages();
+   bool m_enabled;
++  bool m_reportConsoleMessages = true;
++  bool m_serializeConsoleObjects = true;
+   std::unordered_map<String16, std::unique_ptr<v8::Global<v8::Script>>>
+       m_compiledScripts;
+   // Binding name -> executionContextIds mapping.
