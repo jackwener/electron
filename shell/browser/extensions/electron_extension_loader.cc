@@ -23,6 +23,7 @@
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/service_worker_context.h"
 #include "content/public/browser/storage_partition.h"
+#include "extensions/browser/api/runtime/runtime_api.h"
 #include "extensions/browser/extension_file_task_runner.h"
 #include "extensions/browser/extension_pref_names.h"
 #include "extensions/browser/extension_prefs.h"
@@ -196,7 +197,30 @@ void ElectronExtensionLoader::AddLoadedExtension(
           base::Value(false));
     }
 
+    // Persist the version across application launches: AddExtension alone is
+    // a load, not a new installation on every startup.
+    constexpr char kLastInstalledVersion[] = "electron_last_installed_version";
+    std::string previous_version;
+    extension_prefs->ReadPrefAsString(extension->id(), kLastInstalledVersion,
+                                      &previous_version);
+    const bool installation_changed =
+        previous_version != extension->VersionString();
     extension_registrar_->AddExtension(extension);
+    if (installation_changed) {
+      extension_prefs->UpdateExtensionPref(
+          extension->id(), kLastInstalledVersion,
+          base::Value(extension->VersionString()));
+      ExtensionRegistry::Get(browser_context_)
+          ->TriggerOnInstalled(extension.get(), !previous_version.empty());
+      // RuntimeAPI observes the will-install/load pair, not TriggerOnInstalled.
+      // Use its event router so MV3 workers are woken through the lazy queue.
+      base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+          FROM_HERE,
+          base::BindOnce(
+              &RuntimeEventRouter::DispatchOnInstalledEvent,
+              base::UnsafeDangling(static_cast<void*>(browser_context_)),
+              extension->id(), base::Version(previous_version), false));
+    }
 
     // Write extension install time to ExtensionPrefs.
     // This is required by extensions::WebRequestAPI

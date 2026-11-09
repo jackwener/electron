@@ -1,4 +1,4 @@
-import { BrowserWindow, screen } from 'electron/main';
+import { BrowserWindow, WebContentsView, screen } from 'electron/main';
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
@@ -109,6 +109,43 @@ describe.runIf(canDrag)('draggable regions', { tags: ['serial'] }, () => {
   });
 
   afterEach(closeAllWindows);
+
+  it.each(['window', 'view'])(
+    'keeps hover and clicks in %s drag regions when draggableRegions is false',
+    async (kind) => {
+      const w = new BrowserWindow({ ...testWindowOpts, webPreferences: { draggableRegions: false } });
+      let contents = w.webContents;
+      if (kind === 'view') {
+        const view = new WebContentsView({ webPreferences: { draggableRegions: false } });
+        w.contentView.addChildView(view);
+        const { width, height } = w.getContentBounds();
+        view.setBounds({ x: 0, y: 0, width, height });
+        contents = view.webContents;
+        w.once('closed', () => {
+          if (!contents.isDestroyed()) contents.close();
+        });
+      }
+      await contents.loadURL(
+        'data:text/html,' +
+          encodeURIComponent(`
+      <style>html,body,button{margin:0;width:100%;height:100%;app-region:drag}</style>
+      <button onmouseenter="window.hovered=true" onclick="window.clicked=true">Click</button>
+    `)
+      );
+      w.focus();
+      const point = center(w.getBounds());
+      robot.moveMouse(point.x + w.getBounds().width, point.y);
+      robot.moveMouse(point.x, point.y);
+      robot.mouseClick();
+      await setTimeout(200);
+      expect(await contents.executeJavaScript('({hovered:!!window.hovered,clicked:!!window.clicked})')).toEqual({
+        hovered: true,
+        clicked: true
+      });
+      const { start, end } = await performDrag(w);
+      expect(end).toEqual(start);
+    }
+  );
 
   describe('main window', () => {
     let w: BrowserWindow;

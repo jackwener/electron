@@ -992,7 +992,9 @@ WebContents::WebContents(v8::Isolate* isolate,
 
   // TODO: This works for main frames, but does not work for child frames.
   // See: https://github.com/electron/electron/issues/49256
-  web_contents->SetSupportsDraggableRegions(true);
+  const auto* drag_preferences = WebContentsPreferences::From(web_contents);
+  web_contents->SetSupportsDraggableRegions(
+      !drag_preferences || drag_preferences->SupportsDraggableRegions());
 
   session_ = Session::FromOrCreate(isolate, GetBrowserContext());
 
@@ -1244,6 +1246,8 @@ void WebContents::InitWithSessionAndOptions(
   // of the webContents.setWindowOpenHandler path, so don't overwrite it.
   auto* web_preferences = WebContentsPreferences::GetOrCreateForWebContents(
       web_contents(), options);
+  web_contents()->SetSupportsDraggableRegions(
+      web_preferences->SupportsDraggableRegions());
   ignore_menu_shortcuts_ = web_preferences->ShouldIgnoreMenuShortcuts();
   // Trigger re-calculation of webkit prefs.
   web_contents()->NotifyPreferencesChanged();
@@ -1319,7 +1323,10 @@ void WebContents::InitWithWebContents(
 
   // TODO: This works for main frames, but does not work for child frames.
   // See: https://github.com/electron/electron/issues/49256
-  web_contents->SetSupportsDraggableRegions(true);
+  const auto* drag_preferences =
+      WebContentsPreferences::From(web_contents.get());
+  web_contents->SetSupportsDraggableRegions(
+      !drag_preferences || drag_preferences->SupportsDraggableRegions());
 
 #if BUILDFLAG(ENABLE_PRINTING)
   PrintViewManagerElectron::CreateForWebContents(web_contents.get());

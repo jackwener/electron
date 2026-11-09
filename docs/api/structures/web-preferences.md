@@ -1,5 +1,7 @@
 # WebPreferences Object
 
+* `draggableRegions` boolean (optional) - Whether CSS `-webkit-app-region: drag` can define window draggable regions. Defaults to `true`. Set to `false` for ordinary browser tabs so page content remains interactive.
+
 * `devTools` boolean (optional) - Whether to enable DevTools. If it is set to `false`, can not use `BrowserWindow.webContents.openDevTools()` to open DevTools. Default is `true`.
 * `nodeIntegration` boolean (optional) - Whether node integration is enabled.
   Default is `false`.

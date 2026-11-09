@@ -228,6 +228,7 @@ void WebContentsPreferences::Clear() {
   preload_path_ = std::nullopt;
   v8_cache_options_ = blink::mojom::V8CacheOptions::kDefault;
   deprecated_paste_enabled_ = false;
+  draggable_regions_ = true;
   focus_on_navigation_ = true;
   disable_wake_locks_ = false;
   default_minimum_page_scale_factor_ = std::nullopt;
@@ -312,6 +313,8 @@ void WebContentsPreferences::SetFromDictionary(
 
   web_preferences.Get(options::kEnableDeprecatedPaste,
                       &deprecated_paste_enabled_);
+
+  web_preferences.Get("draggableRegions", &draggable_regions_);
 
   web_preferences.Get(options::kFocusOnNavigation, &focus_on_navigation_);
 
