@@ -1267,6 +1267,65 @@ describe('chrome extensions', () => {
       expect((await extension.launch()).marker).toBe('second');
     });
 
+    it('delivers onInstalled to a cold MV3 worker only for a new version', async () => {
+      const partition = `persist:${crypto.randomUUID()}`;
+      const extensionPath = await fs.mkdtemp(path.join(os.tmpdir(), 'electron-install-event-'));
+      defer(() => fs.rm(extensionPath, { recursive: true, force: true }));
+      const events: any[] = [];
+      const receiver = http.createServer((req, res) => {
+        events.push(JSON.parse(new URL(req.url!, 'http://localhost').searchParams.get('event')!));
+        res.end('ok');
+      });
+      const { url: receiverURL } = await listen(receiver);
+      defer(() => receiver.close());
+      await fs.writeFile(
+        path.join(extensionPath, 'worker.js'),
+        `
+        chrome.runtime.onInstalled.addListener(details => {
+          fetch(${JSON.stringify(receiverURL)} + '?event=' + encodeURIComponent(JSON.stringify(details)));
+        });
+      `
+      );
+
+      const launch = async (version: string, expectedCount: number) => {
+        await fs.writeFile(
+          path.join(extensionPath, 'manifest.json'),
+          JSON.stringify({
+            name: 'installation event',
+            version,
+            manifest_version: 3,
+            background: { service_worker: 'worker.js' },
+            host_permissions: ['http://127.0.0.1/*']
+          })
+        );
+        const rc = await startRemoteControlApp();
+        const exited = once(rc.process, 'exit');
+        await rc.remotely(
+          async (partition: string, extensionPath: string) => {
+            await require('electron').session.fromPartition(partition).extensions.loadExtension(extensionPath);
+          },
+          partition,
+          extensionPath
+        );
+        if (expectedCount > events.length) await waitUntil(() => events.length === expectedCount);
+        // Observe a quiet interval too, so duplicate events fail the count check.
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await rc.remotely(() => {
+          setTimeout(() => require('electron').app.quit(), 0);
+        });
+        await exited;
+        expect(events).toHaveLength(expectedCount);
+      };
+
+      // No extension page, runtime message or debugger wakes the worker.
+      await launch('1.0', 1);
+      expect(events[0]).toEqual({ reason: 'install' });
+      await launch('1.0', 1);
+      await launch('2.0', 2);
+      expect(events[1]).toEqual({ reason: 'update', previousVersion: '1.0' });
+      await launch('2.0', 2);
+    });
+
     it('persists alarms and dynamic content scripts across restarts', async () => {
       const partition = `persist:${crypto.randomUUID()}`;
       const extensionPath = path.join(fixtures, 'extensions', 'persistent-state');

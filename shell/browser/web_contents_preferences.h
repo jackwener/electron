@@ -96,6 +96,7 @@ class WebContentsPreferences
 
   const base::Value* last_preference() const { return &last_web_preferences_; }
 
+  bool SupportsDraggableRegions() const { return draggable_regions_; }
   bool IsOffscreen() const { return renderer_.offscreen; }
   std::optional<SkColor> GetBackgroundColor() const {
     return background_color_;
@@ -172,6 +173,7 @@ class WebContentsPreferences
   std::optional<base::FilePath> preload_path_;
   blink::mojom::V8CacheOptions v8_cache_options_;
   bool deprecated_paste_enabled_ = false;
+  bool draggable_regions_ = true;
   bool focus_on_navigation_;
   bool disable_wake_locks_;
   std::optional<float> default_minimum_page_scale_factor_;
