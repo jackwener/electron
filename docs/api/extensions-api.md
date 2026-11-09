@@ -128,3 +128,22 @@ Returns `Extension[]` - A list of all loaded extensions.
 > [!NOTE]
 > This API cannot be called before the `ready` event of the `app` module
 > is emitted.
+
+#### `extensions.setUserScriptsAllowed(extensionId, allowed)`
+
+* `extensionId` string - The ID of an installed extension.
+* `allowed` boolean - Whether the user allows this extension to use `chrome.userScripts`.
+
+Sets the per-extension user consent for the `userScripts` API. It defaults to
+`false`, persists with the session, and updates running extension renderers.
+Call this only after the user changes the corresponding permission control.
+Enabling it requires the extension to declare `userScripts` in its required or
+optional permissions; this does not grant optional API or host permissions.
+Throws if the extension is not installed, or enabling it without the declared permission.
+
+#### `extensions.isUserScriptsAllowed(extensionId)`
+
+* `extensionId` string - The ID of an installed extension.
+
+Returns `boolean` - Whether the extension declares the `userScripts` permission
+and its user consent is enabled. Throws if the extension is not installed.
