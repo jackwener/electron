@@ -43,6 +43,12 @@ class Extensions final : public gin::Wrappable<Extensions>,
                                     const std::string& extension_id);
   v8::Local<v8::Value> GetAllExtensions(v8::Isolate* isolate);
 
+  void SetUserScriptsAllowed(const std::string& extension_id,
+                             bool allowed,
+                             gin::Arguments* args);
+  bool IsUserScriptsAllowed(const std::string& extension_id,
+                            gin::Arguments* args);
+
   // extensions::ExtensionRegistryObserver:
   void OnExtensionLoaded(content::BrowserContext* browser_context,
                          const extensions::Extension* extension) override;

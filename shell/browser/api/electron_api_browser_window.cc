@@ -198,16 +198,14 @@ void BrowserWindow::OnWindowFocus() {
   BaseWindow::OnWindowFocus();
 }
 
+#if !BUILDFLAG(IS_MAC)
 bool BrowserWindow::FocusIsInAnotherView() {
-#if BUILDFLAG(IS_MAC)
-  return false;
-#else
   auto* focus_manager = window()->widget()->GetFocusManager();
   auto* focused = focus_manager ? focus_manager->GetFocusedView() : nullptr;
   auto* primary = window()->primary_web_contents_view();
   return focused && primary && !primary->Contains(focused);
-#endif
 }
+#endif
 
 void BrowserWindow::OnWindowIsKeyChanged(bool is_key) {
 #if BUILDFLAG(IS_MAC)

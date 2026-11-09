@@ -15,6 +15,7 @@
 #include "extensions/common/features/simple_feature.h"
 #include "extensions/common/permissions/permission_message_provider.h"
 #include "extensions/common/url_pattern_set.h"
+#include "extensions/common/user_scripts_availability.h"
 #include "shell/common/application_info.h"
 #include "shell/common/extensions/electron_extensions_api_provider.h"
 
@@ -72,7 +73,8 @@ ElectronExtensionsClient::ElectronExtensionsClient()
 ElectronExtensionsClient::~ElectronExtensionsClient() = default;
 
 void ElectronExtensionsClient::Initialize() {
-  // TODO(jamescook): Do we need to whitelist any extensions?
+  SetFeatureDelegatedAvailabilityCheckMap(
+      extensions::user_scripts_availability::CreateAvailabilityCheckMap());
 }
 
 void ElectronExtensionsClient::InitializeWebStoreUrls(

@@ -6,6 +6,7 @@
 
 #include "chrome/browser/browser_process.h"
 #include "extensions/browser/extension_registry.h"
+#include "extensions/browser/user_script_manager.h"
 #include "gin/arguments.h"
 #include "gin/converter.h"
 #include "gin/object_template_builder.h"
@@ -17,6 +18,7 @@
 #include "shell/common/gin_converters/gurl_converter.h"
 #include "shell/common/gin_converters/value_converter.h"
 #include "shell/common/gin_helper/dictionary.h"
+#include "shell/common/gin_helper/error_thrower.h"
 #include "shell/common/gin_helper/promise.h"
 #include "shell/common/gin_helper/wrappable_pointer_tags.h"
 #include "shell/common/node_util.h"
@@ -124,6 +126,42 @@ v8::Local<v8::Value> Extensions::GetAllExtensions(v8::Isolate* isolate) {
   return gin::ConvertToV8(isolate, extensions_vector);
 }
 
+void Extensions::SetUserScriptsAllowed(const std::string& extension_id,
+                                       bool allowed,
+                                       gin::Arguments* args) {
+  const auto* extension = extensions::ExtensionRegistry::Get(browser_context())
+                              ->GetInstalledExtension(extension_id);
+  if (!extension) {
+    gin_helper::ErrorThrower(args->isolate())
+        .ThrowError("Unknown extension ID");
+    return;
+  }
+  if (allowed &&
+      !extensions::UserScriptManager::IsUserScriptsAPIPermissionAvailable(
+          *extension)) {
+    gin_helper::ErrorThrower(args->isolate())
+        .ThrowError("Extension does not request the userScripts permission");
+    return;
+  }
+  extensions::ExtensionSystem::Get(browser_context())
+      ->user_script_manager()
+      ->SetUserScriptPrefEnabled(extension_id, allowed);
+}
+
+bool Extensions::IsUserScriptsAllowed(const std::string& extension_id,
+                                      gin::Arguments* args) {
+  const auto* extension = extensions::ExtensionRegistry::Get(browser_context())
+                              ->GetInstalledExtension(extension_id);
+  if (!extension) {
+    gin_helper::ErrorThrower(args->isolate())
+        .ThrowError("Unknown extension ID");
+    return false;
+  }
+  return extensions::ExtensionSystem::Get(browser_context())
+      ->user_script_manager()
+      ->AreUserScriptsAllowed(*extension);
+}
+
 void Extensions::OnExtensionLoaded(content::BrowserContext* browser_context,
                                    const extensions::Extension* extension) {
   Emit("extension-loaded", extension);
@@ -149,7 +187,9 @@ gin::ObjectTemplateBuilder Extensions::GetObjectTemplateBuilder(
       .SetMethod("loadExtension", &Extensions::LoadExtension)
       .SetMethod("removeExtension", &Extensions::RemoveExtension)
       .SetMethod("getExtension", &Extensions::GetExtension)
-      .SetMethod("getAllExtensions", &Extensions::GetAllExtensions);
+      .SetMethod("getAllExtensions", &Extensions::GetAllExtensions)
+      .SetMethod("setUserScriptsAllowed", &Extensions::SetUserScriptsAllowed)
+      .SetMethod("isUserScriptsAllowed", &Extensions::IsUserScriptsAllowed);
 }
 
 const gin::WrapperInfo* Extensions::wrapper_info() const {
