@@ -10,13 +10,13 @@
 #include <string>
 #include <utility>
 
-#include "ash/style/rounded_rect_cutout_path_builder.h"
 #include "gin/data_object_builder.h"
 #include "gin/wrappable.h"
 #include "shell/browser/javascript_environment.h"
 #include "shell/common/gin_converters/callback_converter.h"
 #include "shell/common/gin_converters/gfx_converter.h"
 #include "shell/common/gin_helper/dictionary.h"
+#include "shell/common/gin_helper/error_thrower.h"
 #include "shell/common/gin_helper/event_emitter_template.h"
 #include "shell/common/gin_helper/handle.h"
 #include "shell/common/gin_helper/object_template_builder.h"
@@ -488,8 +488,36 @@ void View::SetBackgroundColor(std::optional<WrappedSkColor> color) {
                              : nullptr);
 }
 
-void View::SetBorderRadius(int radius) {
-  border_radius_ = radius;
+void View::SetBorderRadius(v8::Isolate* isolate,
+                           v8::Local<v8::Value> radius) {
+  gfx::RoundedCornersF corners;
+  if (radius->IsNumber()) {
+    float value;
+    if (!gin::ConvertFromV8(isolate, radius, &value))
+      return;
+    corners = gfx::RoundedCornersF(value);
+  } else {
+    gin_helper::Dictionary dict;
+    if (!gin::ConvertFromV8(isolate, radius, &dict)) {
+      gin_helper::ErrorThrower(isolate).ThrowTypeError(
+          "radius must be a number or an object");
+      return;
+    }
+    float top_left = 0, top_right = 0, bottom_right = 0, bottom_left = 0;
+    const auto read_corner = [&](const char* key, float* value) {
+      return !dict.Has(key) || dict.Get(key, value);
+    };
+    if (!read_corner("topLeft", &top_left) ||
+        !read_corner("topRight", &top_right) ||
+        !read_corner("bottomRight", &bottom_right) ||
+        !read_corner("bottomLeft", &bottom_left)) {
+      gin_helper::ErrorThrower(isolate).ThrowTypeError(
+          "corner radii must be numbers");
+      return;
+    }
+    corners = gfx::RoundedCornersF(top_left, top_right, bottom_right, bottom_left);
+  }
+  border_radius_ = corners;
   ApplyBorderRadius();
 }
 
@@ -497,27 +525,8 @@ void View::ApplyBorderRadius() {
   if (!border_radius_.has_value() || !view_)
     return;
 
-  auto size = view_->bounds().size();
-
-  // Restrict border radius to the constraints set in the path builder class.
-  // If the constraints are exceeded, the builder will crash.
-  int radius;
-  {
-    float r = border_radius_.value() * 1.f;
-    r = std::min(r, size.width() / 2.f);
-    r = std::min(r, size.height() / 2.f);
-    r = std::max(r, 0.f);
-    radius = std::floor(r);
-  }
-
-  // RoundedRectCutoutPathBuilder has a minimum size of 32 x 32.
-  if (radius > 0 && size.width() >= 32 && size.height() >= 32) {
-    auto builder = ash::RoundedRectCutoutPathBuilder(gfx::SizeF(size));
-    builder.CornerRadius(radius);
-    view_->SetClipPath(builder.Build());
-  } else {
-    view_->SetClipPath(SkPath());
-  }
+  if (ui::Layer* layer = GetLayer())
+    layer->SetRoundedCornerRadius(border_radius_.value());
 }
 
 void View::SetBackgroundBlur(int blur_radius) {

@@ -112,7 +112,13 @@ Examples of valid `color` values:
 
 #### `view.setBorderRadius(radius)`
 
-* `radius` Integer - Border radius size in pixels.
+* `radius` Number | Object - Border radius size in pixels. A number applies to all four corners.
+  * `topLeft` Number (optional) - Top-left corner radius. Defaults to `0`.
+  * `topRight` Number (optional) - Top-right corner radius. Defaults to `0`.
+  * `bottomRight` Number (optional) - Bottom-right corner radius. Defaults to `0`.
+  * `bottomLeft` Number (optional) - Bottom-left corner radius. Defaults to `0`.
+
+Sets the corner radii of the view. `WebContentsView` inherits this behavior.
 
 > [!NOTE]
 > The area cutout of the view's border still captures clicks.

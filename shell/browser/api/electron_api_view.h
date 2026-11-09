@@ -10,6 +10,7 @@
 #include "base/memory/raw_ptr.h"
 #include "shell/common/color_util.h"
 #include "shell/common/gin_helper/event_emitter.h"
+#include "ui/gfx/geometry/rounded_corners_f.h"
 #include "ui/views/view.h"
 #include "ui/views/view_observer.h"
 #include "v8/include/v8-value.h"
@@ -45,13 +46,15 @@ class View : public gin_helper::EventEmitter<View>,
   void SetLayout(v8::Isolate* isolate, v8::Local<v8::Object> value);
   std::vector<v8::Local<v8::Value>> GetChildren();
   void SetBackgroundColor(std::optional<WrappedSkColor> color);
-  void SetBorderRadius(int radius);
+  void SetBorderRadius(v8::Isolate* isolate, v8::Local<v8::Value> radius);
   void SetBackgroundBlur(int blur_radius);
   void SetVisible(bool visible);
   bool GetVisible() const;
 
   views::View* view() const { return view_; }
-  std::optional<int> border_radius() const { return border_radius_; }
+  std::optional<gfx::RoundedCornersF> border_radius() const {
+    return border_radius_;
+  }
 
   // disable copy
   View(const View&) = delete;
@@ -79,7 +82,7 @@ class View : public gin_helper::EventEmitter<View>,
   void ReorderChildView(gin_helper::Handle<View> child, size_t index);
 
   std::vector<ChildPair> child_views_;
-  std::optional<int> border_radius_;
+  std::optional<gfx::RoundedCornersF> border_radius_;
 
   bool delete_view_ = true;
   raw_ptr<views::View> view_ = nullptr;
