@@ -1842,6 +1842,7 @@ void WebContents::CloseContents(content::WebContents* source) {
 
 void WebContents::ActivateContents(content::WebContents* source) {
   observers_.Notify(&ExtendedWebContentsObserver::OnActivateContents);
+  Emit("activate-requested");
 }
 
 void WebContents::UpdateTargetURL(content::WebContents* source,
