@@ -623,6 +623,21 @@ Emitted when the `WebContents` gains focus.
 The `focus` event is also emitted when switching between windows or apps for the
 `WebContents` that has focus within its window.
 
+#### Event: 'activate-requested'
+
+Returns:
+
+* `event` Event
+
+Emitted when Chromium requests that this `WebContents` be activated, for example
+when the user returns to its tab from a picture-in-picture window, or a page's
+`window.focus()` request is accepted. An application hosting tabs in
+`WebContentsView` can use this event to select the corresponding tab and bring
+its window to the foreground.
+
+This is an activation request, not a notification that focus has changed. The
+application is responsible for deciding whether to activate the tab and window.
+
 #### Event: 'devtools-open-url'
 
 Returns:

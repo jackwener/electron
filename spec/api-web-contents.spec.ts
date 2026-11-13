@@ -70,6 +70,27 @@ describe('webContents module', { retry: 0 }, () => {
     });
   });
 
+  describe('activate-requested event', () => {
+    afterEach(closeAllWindows);
+
+    it('emits when Chromium requests activation of a WebContentsView', async () => {
+      const window = new BaseWindow({ show: false });
+      const view = new WebContentsView();
+      window.contentView.addChildView(view);
+      defer(() => {
+        if (!view.webContents.isDestroyed()) view.webContents.close();
+      });
+      await view.webContents.loadURL('about:blank');
+
+      const activation = once(view.webContents, 'activate-requested');
+      view.webContents.debugger.attach();
+      // Page.bringToFront and PiP's return-to-tab button both call WebContents::Activate.
+      await view.webContents.debugger.sendCommand('Page.bringToFront');
+      const [event] = await activation;
+      expect(event).toHaveProperty('preventDefault');
+    });
+  });
+
   describe('webContents properties', () => {
     afterEach(closeAllWindows);
 
