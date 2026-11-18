@@ -1426,7 +1426,11 @@ describe('chrome extensions', () => {
           partition,
           extensionPath
         );
-        if (expectedCount > events.length) await waitUntil(() => events.length === expectedCount);
+        if (expectedCount > events.length) {
+          await waitUntil(() => events.length === expectedCount, {
+            timeout: Number(process.env.ELECTRON_SPEC_TIMEOUT) || 10000
+          });
+        }
         // Observe a quiet interval too, so duplicate events fail the count check.
         await new Promise((resolve) => setTimeout(resolve, 1000));
         await rc.remotely(() => {
@@ -1501,7 +1505,11 @@ describe('chrome extensions', () => {
           extensionPath,
           previousVersion
         );
-        if (expectedCount > events.length) await waitUntil(() => events.length === expectedCount);
+        if (expectedCount > events.length) {
+          await waitUntil(() => events.length === expectedCount, {
+            timeout: Number(process.env.ELECTRON_SPEC_TIMEOUT) || 10000
+          });
+        }
         // Observe a quiet interval too, so duplicate events fail the count check.
         await new Promise((resolve) => setTimeout(resolve, 1000));
         await rc.remotely(() => {
