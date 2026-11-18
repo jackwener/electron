@@ -47,6 +47,7 @@ class ElectronExtensionLoader : public ExtensionRegistrar::Delegate {
   // extension on success, or nullptr otherwise.
   void LoadExtension(const base::FilePath& extension_dir,
                      int load_flags,
+                     const std::string& previous_version,
                      base::OnceCallback<void(const Extension* extension,
                                              const std::string&)> cb);
 
@@ -70,9 +71,11 @@ class ElectronExtensionLoader : public ExtensionRegistrar::Delegate {
       std::pair<scoped_refptr<const Extension>, std::string> result);
 
   void FinishExtensionLoad(
+      const std::string& imported_previous_version,
       base::OnceCallback<void(const Extension*, const std::string&)> cb,
       std::pair<scoped_refptr<const Extension>, std::string> result);
   void AddLoadedExtension(
+      const std::string& imported_previous_version,
       base::OnceCallback<void(const Extension*, const std::string&)> cb,
       scoped_refptr<const Extension> extension,
       const std::string& error_or_warnings);

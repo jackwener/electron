@@ -1426,7 +1426,11 @@ describe('chrome extensions', () => {
           partition,
           extensionPath
         );
-        if (expectedCount > events.length) await waitUntil(() => events.length === expectedCount);
+        if (expectedCount > events.length) {
+          await waitUntil(() => events.length === expectedCount, {
+            timeout: Number(process.env.ELECTRON_SPEC_TIMEOUT) || 10000
+          });
+        }
         // Observe a quiet interval too, so duplicate events fail the count check.
         await new Promise((resolve) => setTimeout(resolve, 1000));
         await rc.remotely(() => {
@@ -1443,6 +1447,88 @@ describe('chrome extensions', () => {
       await launch('2.0', 2);
       expect(events[1]).toEqual({ reason: 'update', previousVersion: '1.0' });
       await launch('2.0', 2);
+    });
+
+    it('rejects invalid import version baselines before loading', async () => {
+      const customSession = session.fromPartition(`persist:${crypto.randomUUID()}`);
+      const extensionPath = path.join(fixtures, 'extensions', 'persistent-state');
+      for (const previousVersion of ['', 'not-a-version', 1]) {
+        await expect(
+          customSession.extensions.loadExtension(extensionPath, {
+            previousVersion: previousVersion as string
+          })
+        ).rejects.toThrow('previousVersion must be a valid version string');
+      }
+      expect(customSession.extensions.getAllExtensions()).toHaveLength(0);
+    });
+
+    it('uses an import version baseline only until an installation is recorded', async () => {
+      let partition = `persist:${crypto.randomUUID()}`;
+      const extensionPath = await fs.mkdtemp(path.join(os.tmpdir(), 'electron-install-event-'));
+      defer(() => fs.rm(extensionPath, { recursive: true, force: true }));
+      const events: any[] = [];
+      const receiver = http.createServer((req, res) => {
+        events.push(JSON.parse(new URL(req.url!, 'http://localhost').searchParams.get('event')!));
+        res.end('ok');
+      });
+      const { url: receiverURL } = await listen(receiver);
+      defer(() => receiver.close());
+      await fs.writeFile(
+        path.join(extensionPath, 'worker.js'),
+        `
+        chrome.runtime.onInstalled.addListener(details => {
+          fetch(${JSON.stringify(receiverURL)} + '?event=' + encodeURIComponent(JSON.stringify(details)));
+        });
+      `
+      );
+
+      const launch = async (version: string, expectedCount: number, previousVersion?: string) => {
+        await fs.writeFile(
+          path.join(extensionPath, 'manifest.json'),
+          JSON.stringify({
+            name: 'installation event',
+            version,
+            manifest_version: 3,
+            background: { service_worker: 'worker.js' },
+            host_permissions: ['http://127.0.0.1/*']
+          })
+        );
+        const rc = await startRemoteControlApp();
+        const exited = once(rc.process, 'exit');
+        await rc.remotely(
+          async (partition: string, extensionPath: string, previousVersion?: string) => {
+            await require('electron')
+              .session.fromPartition(partition)
+              .extensions.loadExtension(extensionPath, previousVersion == null ? {} : { previousVersion });
+          },
+          partition,
+          extensionPath,
+          previousVersion
+        );
+        if (expectedCount > events.length) {
+          await waitUntil(() => events.length === expectedCount, {
+            timeout: Number(process.env.ELECTRON_SPEC_TIMEOUT) || 10000
+          });
+        }
+        // Observe a quiet interval too, so duplicate events fail the count check.
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await rc.remotely(() => {
+          setTimeout(() => require('electron').app.quit(), 0);
+        });
+        await exited;
+        expect(events).toHaveLength(expectedCount);
+      };
+
+      // A same-version import must also record its version for the next launch.
+      await launch('1.0', 0, '1.0');
+      await launch('1.0', 0);
+      await launch('1.0', 0, '0.5');
+      await launch('2.0', 1, '0.5');
+      expect(events[0]).toEqual({ reason: 'update', previousVersion: '1.0' });
+      await launch('2.0', 1, '0.5');
+      partition = `persist:${crypto.randomUUID()}`;
+      await launch('3.0', 2, '2.0');
+      expect(events[1]).toEqual({ reason: 'update', previousVersion: '2.0' });
     });
 
     it('persists alarms and dynamic content scripts across restarts', async () => {

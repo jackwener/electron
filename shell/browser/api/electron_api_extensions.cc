@@ -4,6 +4,7 @@
 
 #include "shell/browser/api/electron_api_extensions.h"
 
+#include "base/version.h"
 #include "chrome/browser/browser_process.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/user_script_manager.h"
@@ -65,18 +66,26 @@ v8::Local<v8::Promise> Extensions::LoadExtension(
   }
 
   int load_flags = extensions::Extension::FOLLOW_SYMLINKS_ANYWHERE;
+  std::string previous_version;
   gin_helper::Dictionary options;
   if (args->GetNext(&options)) {
     bool allowFileAccess = false;
     options.Get("allowFileAccess", &allowFileAccess);
     if (allowFileAccess)
       load_flags |= extensions::Extension::ALLOW_FILE_ACCESS;
+    if (options.Has("previousVersion") &&
+        (!options.Get("previousVersion", &previous_version) ||
+         !base::Version(previous_version).IsValid())) {
+      promise.RejectWithErrorMessage(
+          "previousVersion must be a valid version string");
+      return handle;
+    }
   }
 
   auto* extension_system = static_cast<extensions::ElectronExtensionSystem*>(
       extensions::ExtensionSystem::Get(browser_context()));
   extension_system->LoadExtension(
-      extension_path, load_flags,
+      extension_path, load_flags, previous_version,
       base::BindOnce(
           [](gin_helper::Promise<const extensions::Extension*> promise,
              const extensions::Extension* extension,
