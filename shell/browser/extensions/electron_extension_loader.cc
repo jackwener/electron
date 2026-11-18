@@ -120,11 +120,13 @@ ElectronExtensionLoader::~ElectronExtensionLoader() = default;
 void ElectronExtensionLoader::LoadExtension(
     const base::FilePath& extension_dir,
     int load_flags,
+    const std::string& previous_version,
     base::OnceCallback<void(const Extension*, const std::string&)> cb) {
   GetExtensionFileTaskRunner()->PostTaskAndReplyWithResult(
       FROM_HERE, base::BindOnce(&LoadUnpacked, extension_dir, load_flags),
       base::BindOnce(&ElectronExtensionLoader::FinishExtensionLoad,
-                     weak_factory_.GetWeakPtr(), std::move(cb)));
+                     weak_factory_.GetWeakPtr(), previous_version,
+                     std::move(cb)));
 }
 
 void ElectronExtensionLoader::ReloadExtension(const ExtensionId& extension_id) {
@@ -150,12 +152,13 @@ void ElectronExtensionLoader::UnloadExtension(
 }
 
 void ElectronExtensionLoader::FinishExtensionLoad(
+    const std::string& imported_previous_version,
     base::OnceCallback<void(const Extension*, const std::string&)> cb,
     std::pair<scoped_refptr<const Extension>, std::string> result) {
   scoped_refptr<const Extension> extension = result.first;
   base::OnceClosure add_extension = base::BindOnce(
       &ElectronExtensionLoader::AddLoadedExtension, weak_factory_.GetWeakPtr(),
-      std::move(cb), extension, result.second);
+      imported_previous_version, std::move(cb), extension, result.second);
 
   // A worker registered by a previous launch keeps running the script it was
   // registered with, and the extension's files can change between launches
@@ -180,6 +183,7 @@ void ElectronExtensionLoader::FinishExtensionLoad(
 }
 
 void ElectronExtensionLoader::AddLoadedExtension(
+    const std::string& imported_previous_version,
     base::OnceCallback<void(const Extension*, const std::string&)> cb,
     scoped_refptr<const Extension> extension,
     const std::string& error_or_warnings) {
@@ -203,13 +207,17 @@ void ElectronExtensionLoader::AddLoadedExtension(
     std::string previous_version;
     extension_prefs->ReadPrefAsString(extension->id(), kLastInstalledVersion,
                                       &previous_version);
+    // An import baseline never overrides an installation already recorded here.
+    if (previous_version.empty())
+      previous_version = imported_previous_version;
     const bool installation_changed =
         previous_version != extension->VersionString();
     extension_registrar_->AddExtension(extension);
+    // Record even a same-version import, so the next launch remains quiet.
+    extension_prefs->UpdateExtensionPref(
+        extension->id(), kLastInstalledVersion,
+        base::Value(extension->VersionString()));
     if (installation_changed) {
-      extension_prefs->UpdateExtensionPref(
-          extension->id(), kLastInstalledVersion,
-          base::Value(extension->VersionString()));
       ExtensionRegistry::Get(browser_context_)
           ->TriggerOnInstalled(extension.get(), !previous_version.empty());
       // RuntimeAPI observes the will-install/load pair, not TriggerOnInstalled.

@@ -59,6 +59,13 @@ The following methods are available on instances of `Extensions`:
     protocol and inject content scripts into `file://` pages. This is required e.g. for loading
     DevTools extensions on `file://` URLs. Defaults to false.
 
+  * `previousVersion` string (optional) - A valid version previously installed in the
+    browser this extension is imported from. Used only if this session has no
+    recorded installation. The same version loads without `runtime.onInstalled`;
+    a different version emits `update` with this `previousVersion`. The loaded
+    version is recorded only after a successful load. Existing installation
+    records take precedence. Invalid version strings reject the promise.
+
 Returns `Promise<Extension>` - resolves when the extension is loaded.
 
 This method will raise an exception if the extension could not be loaded. If
